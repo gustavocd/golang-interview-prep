@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"golang.org/x/crypto/bcrypt"
+
 	_ "github.com/lib/pq"
 )
 
@@ -20,8 +23,8 @@ func NewService(dbUser, dbPassword string) (*service, error) {
 }
 
 type User struct {
-	Name     string
-	Password string
+	Name     string `json:"username"`
+	Password string `json:"password"`
 }
 
 func (s *service) AddUser(u User) (string, error) {
@@ -32,7 +35,12 @@ func (s *service) AddUser(u User) (string, error) {
 	defer db.Close()
 
 	var id string
-	q := "INSERT INTO users (username, password) VALUES ('" + u.Name + "', '" + u.Password + "') RETURNING id"
+	password, err := hashPassword(u.Password)
+	if err != nil {
+		return id, err
+	}
+
+	q := "INSERT INTO users (username, password) VALUES ('" + u.Name + "', '" + password + "') RETURNING id"
 
 	err = db.QueryRow(q).Scan(&id)
 	if err != nil {
@@ -40,4 +48,18 @@ func (s *service) AddUser(u User) (string, error) {
 	}
 
 	return id, nil
+}
+
+func hashPassword(p string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+
+	return string(bytes), nil
+}
+
+func checkPasswordHash(p, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(p))
+	return err == nil
 }
